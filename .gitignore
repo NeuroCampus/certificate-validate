@@ -1,0 +1,106 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Directory for dependencies
+node_modules/
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Environment files
+django_backend/.venv
+django_backend/.venv.*
+.env.local
+.env*.local
+.env.development
+.env.production
+.env.test
+
+# Build output
+build/
+output/
+coverage/
+
+# Dependency directories
+jspm_packages/
+bower_components/
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.out/
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Java
+*.class
+*.jar
+
+# Ruby
+.bundle/
+*.gem
+
+# PHP
+*.php
+
+# Miscellaneous
+*.bak
+*.cache
+*.diff
+*.err
+*.orig
+*.patch
+*.rej
+*.swp
+*.un~
+*.tmp
+*.log
+*.sublime-workspace
+*.sublime-project
+
+# Testing
+/coverage
+/.nyc_output
+
+# Security
+.npmrc
+.yarnrc
+
+# Ignore the django_backend/env dire
+venv
