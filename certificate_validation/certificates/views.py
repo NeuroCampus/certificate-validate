@@ -9,7 +9,7 @@ from rest_framework.authtoken.models import Token
 from django.utils import timezone
 from django.db.models import Sum, Count
 from django.db.models.functions import Coalesce
-from django.db.models import DecimalField  # Added for output_field
+from django.db.models import DecimalField
 from .models import Certificate, UserProfile, Domain, RankHistory, BlockchainVerification
 import json
 import urllib.parse
@@ -22,6 +22,35 @@ from decimal import Decimal
 logger = logging.getLogger(__name__)
 
 User = get_user_model()
+
+def update_user_ranks():
+    """Update total_weightage and current_rank for all users based on certificate weightage."""
+    try:
+        users = UserProfile.objects.annotate(
+            cert_total_weightage=Coalesce(
+                Sum('user__certificate__weightage'),
+                Decimal('0.0'),
+                output_field=DecimalField()
+            )
+        ).order_by('-cert_total_weightage', 'user__email')
+
+        if not users.exists():
+            logger.info("No users found for rank and weightage update")
+            return
+
+        for rank, user_profile in enumerate(users, 1):
+            # Update total_weightage if different
+            if user_profile.total_weightage != user_profile.cert_total_weightage:
+                user_profile.total_weightage = user_profile.cert_total_weightage
+                logger.info(f"Updated total_weightage for {user_profile.user.email} to {user_profile.total_weightage}")
+            # Update current_rank if different
+            if user_profile.current_rank != rank:
+                user_profile.current_rank = rank
+                logger.info(f"Updated rank for {user_profile.user.email} to {rank}")
+            user_profile.save()
+        logger.info("User ranks and weightage updated successfully")
+    except Exception as e:
+        logger.error(f"update_user_ranks error: {str(e)}")
 
 # Authentication Views
 class SignupView(APIView):
@@ -50,6 +79,10 @@ class SignupView(APIView):
             )
             profile = UserProfile.objects.create(user=user)
             token, created = Token.objects.get_or_create(user=user)
+
+            # Update ranks and weightage to include new user
+            update_user_ranks()
+
             return Response({
                 'message': 'User created successfully',
                 'token': token.key,
@@ -87,7 +120,10 @@ class SigninView(APIView):
                 return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
 
             token, created = Token.objects.get_or_create(user=user)
-            profile = user.userprofile
+            profile = user.userprofile  # Fetch fresh profile
+            # Ensure ranks and weightage are up-to-date
+            update_user_ranks()
+
             return Response({
                 'message': 'Login successful',
                 'token': token.key,
@@ -129,6 +165,8 @@ def google_auth_complete(request, *args, **kwargs):
             UserProfile.objects.create(user=user)
         profile = user.userprofile
         token, created = Token.objects.get_or_create(user=user)
+        # Update ranks and weightage for Google auth
+        update_user_ranks()
         user_data = {
             'id': user.id,
             'email': user.email,
@@ -160,6 +198,9 @@ class DashboardView(APIView):
             profile = user.userprofile
             certificates = Certificate.objects.filter(user=user)
             domains = Domain.objects.filter(user=user)
+
+            # Ensure ranks and weightage are up-to-date
+            update_user_ranks()
 
             total_weightage = profile.total_weightage
             total_certificates = certificates.count()
@@ -222,23 +263,55 @@ class CertificateUploadView(APIView):
             if not certificate_file:
                 return Response({'error': 'Certificate file is required'}, status=status.HTTP_400_BAD_REQUEST)
 
+            # Check for duplicate certificate
+            certificate_name = data.get('name', certificate_file.name)
+            if Certificate.objects.filter(user=user, name=certificate_name).exists():
+                return Response(
+                    {'error': 'Certificate with this name already exists'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Validate weightage as Decimal
+            try:
+                weightage_str = data.get('weightage', '0.00')
+                weightage = Decimal(weightage_str)
+                if weightage < 0 or weightage > 999.99:  # Match max_digits=5, decimal_places=2
+                    return Response(
+                        {'error': 'Weightage must be between 0.00 and 999.99'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            except (ValueError, TypeError, Decimal.InvalidOperation):
+                return Response(
+                    {'error': 'Invalid weightage format'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
             ocr_data = {
-                'name': data.get('name', ''),
-                'issuer': data.get('issuer', ''),
-                'category': data.get('category', ''),
-                'domain': data.get('domain', ''),
-                'weightage': float(data.get('weightage', 0.0))
+                'name': certificate_name,
+                'issuer': data.get('issuer', 'Unknown'),
+                'category': data.get('category', 'General'),
+                'domain': data.get('domain', 'General'),
+                'weightage': weightage
             }
 
-            certificate = Certificate.objects.create(
+            certificate, created = Certificate.objects.get_or_create(
                 user=user,
-                name=ocr_data['name'] or certificate_file.name,
-                issuer=ocr_data['issuer'] or 'Unknown',
-                category=ocr_data['category'] or 'General',
-                domain=ocr_data['domain'] or 'General',
-                weightage=ocr_data['weightage'] or 0.0,
-                certificate_file=certificate_file
+                name=ocr_data['name'],
+                defaults={
+                    'issuer': ocr_data['issuer'],
+                    'category': ocr_data['category'],
+                    'domain': ocr_data['domain'],
+                    'weightage': ocr_data['weightage'],
+                    'certificate_file': certificate_file,
+                    'status': 'pending'
+                }
             )
+
+            if not created:
+                return Response(
+                    {'error': 'Certificate already exists'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
             tx_hash = f"tx_{certificate.id}"
             BlockchainVerification.objects.create(
@@ -249,13 +322,16 @@ class CertificateUploadView(APIView):
             )
 
             profile = user.userprofile
-            profile.total_weightage += Decimal(str(certificate.weightage))
+            profile.total_weightage += certificate.weightage
             profile.save()
 
             domain, created = Domain.objects.get_or_create(user=user, name=certificate.domain)
             domain.certificate_count += 1
-            domain.total_weightage += Decimal(str(certificate.weightage))
+            domain.total_weightage += certificate.weightage
             domain.save()
+
+            # Update ranks and weightage for all users
+            update_user_ranks()
 
             return Response({
                 'message': 'Certificate uploaded successfully',
@@ -288,10 +364,16 @@ class LeaderboardView(APIView):
                     output_field=DecimalField()
                 )
             ).order_by('-cert_total_weightage', 'certificate_count').values(
-                'user__email', 'cert_total_weightage', 'certificate_count', 'current_rank'
+                'user__email', 'cert_total_weightage', 'certificate_count'
             )[:50]
 
-            return Response({'leaderboard': list(leaderboard)}, status=status.HTTP_200_OK)
+            # Assign ranks dynamically
+            leaderboard_with_ranks = [
+                {**entry, 'current_rank': index + 1}
+                for index, entry in enumerate(leaderboard)
+            ]
+
+            return Response({'leaderboard': leaderboard_with_ranks}, status=status.HTTP_200_OK)
         except Exception as e:
             logger.error(f"LeaderboardView error: {str(e)}")
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -305,6 +387,9 @@ class ProfileView(APIView):
             profile = user.userprofile
             domains = Domain.objects.filter(user=user)
             rank_history = RankHistory.objects.filter(user=user).order_by('month').values('month', 'rank')
+
+            # Ensure ranks and weightage are up-to-date
+            update_user_ranks()
 
             return Response({
                 'profile': {

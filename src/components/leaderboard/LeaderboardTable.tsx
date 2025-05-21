@@ -47,8 +47,10 @@ export function LeaderboardTable() {
           }
         );
         const data: LeaderboardEntry[] = response.data.leaderboard;
+        // Sort by current_rank to ensure consistent ranking
+        const sortedData = data.sort((a, b) => a.current_rank - b.current_rank);
         setLeaderboard(
-          data.map((entry, index) => {
+          sortedData.map((entry, index) => {
             const email = entry.user__email;
             const name = email.split("@")[0].split(".").join(" ");
             const department =
@@ -64,10 +66,10 @@ export function LeaderboardTable() {
                 ? "down"
                 : "same";
             return {
-              id: index + 1,
+              id: index + 1, // Unique key for React
               name,
               weightage: entry.cert_total_weightage,
-              rank: entry.current_rank,
+              rank: entry.current_rank, // Use backend-provided rank
               department,
               trend,
               avatar: `https://ui-avatars.com/api/?name=${name.replace(" ", "+")}`,

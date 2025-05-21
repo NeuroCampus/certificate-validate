@@ -21,18 +21,17 @@ export function DashboardSidebar({ isMobile = false }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(isMobile);
   const navigate = useNavigate();
   const location = useLocation();
-  const { logout } = useAuth(); // Add useAuth to access logout
+  const { logout } = useAuth();
 
   const toggleSidebar = () => {
     setCollapsed(!collapsed);
   };
 
   const handleLogout = async () => {
-    await logout(); // Call logout from AuthContext
+    await logout();
     navigate("/login");
   };
 
-  // Check if the current route matches the provided path
   const isActive = (path: string) => {
     return location.pathname === path;
   };
@@ -71,23 +70,43 @@ export function DashboardSidebar({ isMobile = false }: SidebarProps) {
           </div>
           
           <nav className="flex-1 p-4 space-y-2">
-            <Link to="/dashboard" className={`flex items-center px-3 py-2 rounded-md hover:bg-gray-100 ${isActive('/dashboard') ? 'bg-primary/10 text-primary' : 'text-gray-700 hover:text-primary'}`}>
+            <Link 
+              to="/dashboard" 
+              className={`flex items-center px-3 py-2 rounded-md hover:bg-gray-100 ${isActive('/dashboard') ? 'bg-primary/10 text-primary' : 'text-gray-700 hover:text-primary'}`}
+              onClick={() => isMobile && setCollapsed(true)}
+            >
               <LayoutDashboard size={20} className="mr-3" />
               <span>Dashboard</span>
             </Link>
-            <Link to="/upload" className={`flex items-center px-3 py-2 rounded-md hover:bg-gray-100 ${isActive('/upload') ? 'bg-primary/10 text-primary' : 'text-gray-700 hover:text-primary'}`}>
+            <Link 
+              to="/upload" 
+              className={`flex items-center px-3 py-2 rounded-md hover:bg-gray-100 ${isActive('/upload') ? 'bg-primary/10 text-primary' : 'text-gray-700 hover:text-primary'}`}
+              onClick={() => isMobile && setCollapsed(true)}
+            >
               <Upload size={20} className="mr-3" />
               <span>Upload Certificate</span>
             </Link>
-            <Link to="/certificates" className={`flex items-center px-3 py-2 rounded-md hover:bg-gray-100 ${isActive('/certificates') ? 'bg-primary/10 text-primary' : 'text-gray-700 hover:text-primary'}`}>
+            <Link 
+              to="/certificates" 
+              className={`flex items-center px-3 py-2 rounded-md hover:bg-gray-100 ${isActive('/certificates') ? 'bg-primary/10 text-primary' : 'text-gray-700 hover:text-primary'}`}
+              onClick={() => isMobile && setCollapsed(true)}
+            >
               <FileText size={20} className="mr-3" />
               <span>My Certificates</span>
             </Link>
-            <Link to="/leaderboard" className={`flex items-center px-3 py-2 rounded-md hover:bg-gray-100 ${isActive('/leaderboard') ? 'bg-primary/10 text-primary' : 'text-gray-700 hover:text-primary'}`}>
+            <Link 
+              to="/leaderboard" 
+              className={`flex items-center px-3 py-2 rounded-md hover:bg-gray-100 ${isActive('/leaderboard') ? 'bg-primary/10 text-primary' : 'text-gray-700 hover:text-primary'}`}
+              onClick={() => isMobile && setCollapsed(true)}
+            >
               <Trophy size={20} className="mr-3" />
               <span>Leaderboard</span>
             </Link>
-            <Link to="/profile" className={`flex items-center px-3 py-2 rounded-md hover:bg-gray-100 ${isActive('/profile') ? 'bg-primary/10 text-primary' : 'text-gray-700 hover:text-primary'}`}>
+            <Link 
+              to="/profile" 
+              className={`flex items-center px-3 py-2 rounded-md hover:bg-gray-100 ${isActive('/profile') ? 'bg-primary/10 text-primary' : 'text-gray-700 hover:text-primary'}`}
+              onClick={() => isMobile && setCollapsed(true)}
+            >
               <UserRound size={20} className="mr-3" />
               <span>My Profile</span>
             </Link>
