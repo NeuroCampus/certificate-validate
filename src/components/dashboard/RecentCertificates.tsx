@@ -25,7 +25,7 @@ export function RecentCertificates() {
         });
         setCertificates(response.data.certificates.slice(0, 5)); // Limit to 5 recent
       } catch (err) {
-        setError('Failed to load certificates');
+        setError('Failed to load-certificates');
         console.error(err);
       } finally {
         setLoading(false);
