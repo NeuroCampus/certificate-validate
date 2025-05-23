@@ -96,8 +96,7 @@ export default function Login() {
           <div className="text-center max-w-lg">
             <h1 className="text-3xl font-bold mb-6">Blockchain-Verified Certificates</h1>
             <p className="text-lg mb-8 text-white/90">
-              Securely manage your academic achievements with our blockchain-powered 
-              certificate management system.
+              Securely manage and verify your academic achievements with our blockchain-powered system.
             </p>
             
             <div className="space-y-4 mt-12">
@@ -109,7 +108,7 @@ export default function Login() {
                 </div>
                 <div className="text-left">
                   <h4 className="text-sm font-semibold mb-1">Secure Verification</h4>
-                  <p className="text-xs text-white/70">All certificates are verified and stored on the blockchain</p>
+                  <p className="text-xs text-white/70">Certificates are verified and stored on the blockchain</p>
                 </div>
               </div>
               
@@ -121,7 +120,7 @@ export default function Login() {
                 </div>
                 <div className="text-left">
                   <h4 className="text-sm font-semibold mb-1">Academic Rankings</h4>
-                  <p className="text-xs text-white/70">See where you stand with our dynamic ranking system</p>
+                  <p className="text-xs text-white/70">Track your standing with our dynamic ranking system</p>
                 </div>
               </div>
               
@@ -132,8 +131,8 @@ export default function Login() {
                   </svg>
                 </div>
                 <div className="text-left">
-                  <h4 className="text-sm font-semibold mb-1">Automated Recognition</h4>
-                  <p className="text-xs text-white/70">Our OCR technology automatically processes your certificates</p>
+                  <h4 className="text-sm font-semibold mb-1">Automated Processing</h4>
+                  <p className="text-xs text-white/70">OCR technology automatically processes certificates</p>
                 </div>
               </div>
             </div>

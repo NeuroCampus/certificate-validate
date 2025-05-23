@@ -65,7 +65,22 @@ export function UploadDropZone() {
   };
 
   const processFile = async () => {
-    if (!selectedFile || !token) return;
+    if (!selectedFile) {
+      toast({
+        title: "No file selected",
+        description: "Please select a file to upload",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!token) {
+      toast({
+        title: "Authentication error",
+        description: "Please log in to upload a certificate",
+        variant: "destructive",
+      });
+      return;
+    }
 
     setProcessing(true);
     setProgress(0);
@@ -73,6 +88,11 @@ export function UploadDropZone() {
     try {
       const formData = new FormData();
       formData.append("certificate_file", selectedFile);
+      formData.append("name", selectedFile.name);
+      formData.append("issuer", "Unknown");
+      formData.append("category", "General");
+      formData.append("domain", "General");
+      formData.append("weightage", "0.00"); // Send as string for DecimalField
 
       const response = await axios.post(
         `${import.meta.env.VITE_API_BASE_URL}/api/certificates/upload/`,
@@ -100,10 +120,12 @@ export function UploadDropZone() {
       });
     } catch (err: any) {
       setProcessing(false);
+      const errorMessage =
+        err.response?.data?.error || "Failed to upload certificate. Please try again.";
       toast({
         variant: "destructive",
         title: "Upload failed",
-        description: err.response?.data?.error || "Failed to upload certificate",
+        description: errorMessage,
       });
     }
   };
