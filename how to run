@@ -2,6 +2,7 @@ python3.11 -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 pip install dotenv
+pip install paddleocr paddlepaddle fuzzywuzzy python-Levenshtein
 cd certificate_validation
 
 python manage.py makemigrations

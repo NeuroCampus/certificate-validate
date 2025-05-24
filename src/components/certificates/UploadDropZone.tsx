@@ -4,6 +4,13 @@ import { Upload, File, Loader2 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import axios from "axios";
 import { useAuth } from "@/context/AuthContext";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export function UploadDropZone() {
   const { toast } = useToast();
@@ -12,6 +19,32 @@ export function UploadDropZone() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [processing, setProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [courseName, setCourseName] = useState<string>("");
+  const [issuer, setIssuer] = useState<string>("");
+
+  const COURSES = ["Python", "Java", "Ruby", "SQL", "MongoDB"];
+  const ISSUERS = [
+    "Coursera",
+    "Udemy",
+    "LinkedIn Learning",
+    "Microsoft Learn",
+    "Amazon Web Services (AWS)",
+    "edX",
+    "Udacity",
+    "PMP",
+    "ITIL",
+    "HubSpot Academy",
+    "FutureLearn",
+    "Great Learning",
+    "Skillshare",
+    "Alison",
+    "freeCodeCamp",
+    "CodeSignal",
+    "OpenLearn",
+    "NPTEL",
+    "SWAYAM",
+    "Google",
+  ];
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -73,6 +106,14 @@ export function UploadDropZone() {
       });
       return;
     }
+    if (!courseName || !issuer) {
+      toast({
+        title: "Missing fields",
+        description: "Please select a course and issuer",
+        variant: "destructive",
+      });
+      return;
+    }
     if (!token) {
       toast({
         title: "Authentication error",
@@ -89,10 +130,11 @@ export function UploadDropZone() {
       const formData = new FormData();
       formData.append("certificate_file", selectedFile);
       formData.append("name", selectedFile.name);
-      formData.append("issuer", "Unknown");
+      formData.append("issuer", issuer);
+      formData.append("course_name", courseName);
       formData.append("category", "General");
       formData.append("domain", "General");
-      formData.append("weightage", "0.00"); // Send as string for DecimalField
+      formData.append("weightage", "0.00");
 
       const response = await axios.post(
         `${import.meta.env.VITE_API_BASE_URL}/api/certificates/upload/`,
@@ -104,7 +146,9 @@ export function UploadDropZone() {
           },
           onUploadProgress: (progressEvent) => {
             if (progressEvent.total) {
-              const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+              const percent = Math.round(
+                (progressEvent.loaded * 100) / progressEvent.total
+              );
               setProgress(percent);
             }
           },
@@ -113,6 +157,8 @@ export function UploadDropZone() {
 
       setProcessing(false);
       setSelectedFile(null);
+      setCourseName("");
+      setIssuer("");
       setProgress(0);
       toast({
         title: "Certificate uploaded",
@@ -121,7 +167,8 @@ export function UploadDropZone() {
     } catch (err: any) {
       setProcessing(false);
       const errorMessage =
-        err.response?.data?.error || "Failed to upload certificate. Please try again.";
+        err.response?.data?.error ||
+        "Failed to upload certificate. Please try again.";
       toast({
         variant: "destructive",
         title: "Upload failed",
@@ -132,6 +179,8 @@ export function UploadDropZone() {
 
   const resetUpload = () => {
     setSelectedFile(null);
+    setCourseName("");
+    setIssuer("");
     setProgress(0);
   };
 
@@ -139,7 +188,9 @@ export function UploadDropZone() {
     <div className="space-y-6">
       <div
         className={`border-2 rounded-lg p-8 text-center ${
-          dragActive ? "border-primary drag-active" : "border-dashed border-gray-300"
+          dragActive
+            ? "border-primary drag-active"
+            : "border-dashed border-gray-300"
         } transition-all h-[300px] flex flex-col items-center justify-center`}
         onDragEnter={handleDrag}
         onDragLeave={handleDrag}
@@ -151,7 +202,9 @@ export function UploadDropZone() {
             <div className="p-4 rounded-full bg-primary/10 mb-4">
               <Upload size={24} className="text-primary" />
             </div>
-            <h3 className="text-lg font-medium mb-1">Drag and drop your certificate</h3>
+            <h3 className="text-lg font-medium mb-1">
+              Drag and drop your certificate
+            </h3>
             <p className="text-sm text-muted-foreground mb-4">
               Support for PDF, JPG, and PNG files up to 5MB
             </p>
@@ -171,7 +224,8 @@ export function UploadDropZone() {
             </label>
           </>
         ) : (
-          <div className="flex flex-col items-center space-y-4">
+          <div className="flex flex-col items-center space-y-4 w-full max-w-md">
+            {console.log("Rendering selected file section", { selectedFile, courseName, issuer })}
             <div className="p-4 rounded-full bg-primary/10 mb-1">
               <File size={24} className="text-primary" />
             </div>
@@ -179,6 +233,38 @@ export function UploadDropZone() {
             <p className="text-sm text-muted-foreground">
               {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
             </p>
+            <div className="grid grid-cols-2 gap-4 w-full">
+              <Select value={courseName} onValueChange={(value) => {
+                console.log("Course selected:", value);
+                setCourseName(value);
+              }}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select Course" />
+                </SelectTrigger>
+                <SelectContent>
+                  {COURSES.map((course) => (
+                    <SelectItem key={course} value={course}>
+                      {course}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={issuer} onValueChange={(value) => {
+                console.log("Issuer selected:", value);
+                setIssuer(value);
+              }}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select Issuer" />
+                </SelectTrigger>
+                <SelectContent>
+                  {ISSUERS.map((iss) => (
+                    <SelectItem key={iss} value={iss}>
+                      {iss}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             {processing && (
               <>
                 <div className="w-full max-w-xs mt-4">
