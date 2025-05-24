@@ -10,7 +10,7 @@ from django.utils import timezone
 from django.db.models import Sum, Count
 from django.db.models.functions import Coalesce
 from django.db.models import DecimalField
-from .models import Certificate, UserProfile, Domain, RankHistory, BlockchainVerification
+from .models import Certificate, UserProfile, Domain, RankHistory, BlockchainVerification, OCRExtraction , Course
 import json
 import urllib.parse
 from rest_framework.permissions import IsAuthenticated
@@ -18,10 +18,49 @@ import os
 from django.conf import settings
 import logging
 from decimal import Decimal
+from paddleocr import PaddleOCR
+from fuzzywuzzy import fuzz
+from fuzzywuzzy import process
+
 
 logger = logging.getLogger(__name__)
 
 User = get_user_model()
+
+ALLOWED_COURSES = ["python", "java", "ruby", "sql", "mongodb"]
+
+ocr_engine = PaddleOCR(use_angle_cls=True, lang='en')
+
+ISSUER_WEIGHTS = {
+    "Coursera": 9.5,
+    "Udemy": 7.0,
+    "LinkedIn Learning": 8.5,
+    "Microsoft Learn": 8.5,
+    "Amazon Web Services (AWS)": 9.0,
+    "edX": 9.5,
+    "Udacity": 9.0,
+    "PMP": 10.0,
+    "ITIL": 9.0,
+    "HubSpot Academy": 7.0,
+    "FutureLearn": 6.5,
+    "Great Learning": 7.5,
+    "Skillshare": 6.0,
+    "Alison": 6.5,
+    "freeCodeCamp": 8.0,
+    "CodeSignal": 8.5,
+    "OpenLearn": 6.5,
+    "NPTEL": 8.5,
+    "SWAYAM": 8.0,
+    "Google": 9.0
+}
+
+COURSE_DIFFICULTY = {
+    "Python": 7.0,
+    "Java": 7.5,
+    "Ruby": 6.0,
+    "SQL": 7.0,
+    "MongoDB": 7.5
+}
 
 def update_user_ranks():
     """Update total_weightage and current_rank for all users based on certificate weightage."""
@@ -225,6 +264,7 @@ class DashboardView(APIView):
             logger.error(f"DashboardView error: {str(e)}")
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
 class CertificateListView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -263,87 +303,125 @@ class CertificateUploadView(APIView):
             if not certificate_file:
                 return Response({'error': 'Certificate file is required'}, status=status.HTTP_400_BAD_REQUEST)
 
-            # Check for duplicate certificate
             certificate_name = data.get('name', certificate_file.name)
+
             if Certificate.objects.filter(user=user, name=certificate_name).exists():
-                return Response(
-                    {'error': 'Certificate with this name already exists'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                return Response({'error': 'Certificate with this name already exists'}, status=status.HTTP_400_BAD_REQUEST)
 
-            # Validate weightage as Decimal
-            try:
-                weightage_str = data.get('weightage', '0.00')
-                weightage = Decimal(weightage_str)
-                if weightage < 0 or weightage > 999.99:  # Match max_digits=5, decimal_places=2
-                    return Response(
-                        {'error': 'Weightage must be between 0.00 and 999.99'},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-            except (ValueError, TypeError, Decimal.InvalidOperation):
-                return Response(
-                    {'error': 'Invalid weightage format'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+            # OCR Processing
+            ocr = PaddleOCR(use_angle_cls=True, lang='en')
+            ocr_result = ocr.ocr(certificate_file.temporary_file_path(), cls=True)
+            extracted_text = ' '.join([line[1][0] for block in ocr_result for line in block])
 
-            ocr_data = {
-                'name': certificate_name,
-                'issuer': data.get('issuer', 'Unknown'),
-                'category': data.get('category', 'General'),
-                'domain': data.get('domain', 'General'),
-                'weightage': weightage
-            }
+            # Extract possible fields from OCR (naive match)
+            extracted_issuer = next((key for key in ISSUER_WEIGHTS.keys() if key.lower() in extracted_text.lower()), None)
+            extracted_course = next((key for key in COURSE_WEIGHTS.keys() if key.lower() in extracted_text.lower()), None)
+            extracted_name = f"{user.first_name} {user.last_name}".strip()
 
-            certificate, created = Certificate.objects.get_or_create(
+            # Compare user input with OCR extracted data
+            input_issuer = data.get("issuer", "")
+            input_course = data.get("course_name", "")
+
+            issuer_match = fuzz.token_sort_ratio(input_issuer.lower(), extracted_issuer.lower()) if extracted_issuer else 0
+            course_match = fuzz.token_sort_ratio(input_course.lower(), extracted_course.lower()) if extracted_course else 0
+            name_match = fuzz.token_sort_ratio(extracted_name.lower(), extracted_text.lower())
+
+            if issuer_match < 80 or course_match < 80 or name_match < 80:
+                return Response({
+                    'error': 'Certificate details do not match OCR results',
+                    'ocr_result': {
+                        'issuer': extracted_issuer,
+                        'course': extracted_course,
+                        'name': extracted_name,
+                        'issuer_match': issuer_match,
+                        'course_match': course_match,
+                        'name_match': name_match
+                    }
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Assign weightage from predefined mappings
+            issuer_weight = ISSUER_WEIGHTS.get(extracted_issuer, 5.0)
+            course_weight = COURSE_WEIGHTS.get(extracted_course.lower(), 5.0)
+            final_weightage = round((issuer_weight + course_weight) / 2, 2)
+
+            # Save Certificate
+            certificate = Certificate.objects.create(
                 user=user,
-                name=ocr_data['name'],
-                defaults={
-                    'issuer': ocr_data['issuer'],
-                    'category': ocr_data['category'],
-                    'domain': ocr_data['domain'],
-                    'weightage': ocr_data['weightage'],
-                    'certificate_file': certificate_file,
-                    'status': 'pending'
-                }
+                name=certificate_name,
+                issuer=extracted_issuer,
+                weightage=final_weightage,
+                status='pending',
+                certificate_file=certificate_file
             )
 
-            if not created:
-                return Response(
-                    {'error': 'Certificate already exists'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-            tx_hash = f"tx_{certificate.id}"
-            BlockchainVerification.objects.create(
-                certificate=certificate,
-                transaction_hash=tx_hash,
-                blockchain_network='Ethereum',
-                verified=False
+            # Save Course
+            Course.objects.create(
+                user=user,
+                course_name=extracted_course,
+                issuer=extracted_issuer
             )
 
+            # Update user profile total weightage
             profile = user.userprofile
-            profile.total_weightage += certificate.weightage
+            profile.total_weightage += final_weightage
             profile.save()
 
-            domain, created = Domain.objects.get_or_create(user=user, name=certificate.domain)
+            # Update domain info
+            domain, _ = Domain.objects.get_or_create(user=user, name='General')
             domain.certificate_count += 1
-            domain.total_weightage += certificate.weightage
+            domain.total_weightage += final_weightage
             domain.save()
 
-            # Update ranks and weightage for all users
+            # Update user rankings
             update_user_ranks()
 
             return Response({
-                'message': 'Certificate uploaded successfully',
+                'message': 'Certificate uploaded and verified successfully',
                 'certificate': {
                     'id': certificate.id,
                     'name': certificate.name,
-                    'status': certificate.status
+                    'issuer': certificate.issuer,
+                    'course': extracted_course,
+                    'weightage': final_weightage,
                 }
             }, status=status.HTTP_201_CREATED)
+
         except Exception as e:
             logger.error(f"CertificateUploadView error: {str(e)}")
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
+class ProfileView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        try:
+            user = request.user
+            profile = user.userprofile
+            domains = Domain.objects.filter(user=user)
+            rank_history = RankHistory.objects.filter(user=user).order_by('month').values('month', 'rank')
+
+            # Ensure ranks and weightage are up-to-date
+            update_user_ranks()
+
+            return Response({
+                'profile': {
+                    'email': user.email,
+                    'first_name': user.first_name,
+                    'last_name': user.last_name,
+                    'department': profile.department,
+                    'join_date': profile.join_date.isoformat(),
+                    'total_weightage': float(profile.total_weightage),
+                    'current_rank': profile.current_rank
+                },
+                'domains': list(domains.values('name', 'certificate_count', 'total_weightage')),
+                'rank_history': list(rank_history)
+            }, status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.error(f"ProfileView error: {str(e)}")
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 class LeaderboardView(APIView):
     permission_classes = [IsAuthenticated]
@@ -376,34 +454,4 @@ class LeaderboardView(APIView):
             return Response({'leaderboard': leaderboard_with_ranks}, status=status.HTTP_200_OK)
         except Exception as e:
             logger.error(f"LeaderboardView error: {str(e)}")
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-class ProfileView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request):
-        try:
-            user = request.user
-            profile = user.userprofile
-            domains = Domain.objects.filter(user=user)
-            rank_history = RankHistory.objects.filter(user=user).order_by('month').values('month', 'rank')
-
-            # Ensure ranks and weightage are up-to-date
-            update_user_ranks()
-
-            return Response({
-                'profile': {
-                    'email': user.email,
-                    'first_name': user.first_name,
-                    'last_name': user.last_name,
-                    'department': profile.department,
-                    'join_date': profile.join_date.isoformat(),
-                    'total_weightage': float(profile.total_weightage),
-                    'current_rank': profile.current_rank
-                },
-                'domains': list(domains.values('name', 'certificate_count', 'total_weightage')),
-                'rank_history': list(rank_history)
-            }, status=status.HTTP_200_OK)
-        except Exception as e:
-            logger.error(f"ProfileView error: {str(e)}")
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
