@@ -75,19 +75,16 @@ export default function Dashboard() {
               title="Total Weightage"
               value={dashboardData.stats.total_weightage.toFixed(1)}
               icon={<Award size={18} />}
-              description="+2.5 from last month"
             />
             <StatCard
               title="Total Certificates"
               value={dashboardData.stats.total_certificates}
               icon={<FileText size={18} />}
-              description="3 pending verification"
             />
             <StatCard
               title="Current Rank"
               value={dashboardData.stats.current_rank}
               icon={<Trophy size={18} />}
-              description="Improved by 4 positions"
             />
           </div>
           
