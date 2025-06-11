@@ -18,9 +18,20 @@ import os
 from django.conf import settings
 import logging
 from decimal import Decimal
-from paddleocr import PaddleOCR
 from fuzzywuzzy import fuzz
 from fuzzywuzzy import process
+import tempfile
+import time
+import hashlib
+import fitz  # PyMuPDF
+import io
+from PIL import Image
+import pytesseract
+from paddleocr import PaddleOCR 
+import re
+
+
+
 
 
 logger = logging.getLogger(__name__)
@@ -51,15 +62,16 @@ ISSUER_WEIGHTS = {
     "OpenLearn": 6.5,
     "NPTEL": 8.5,
     "SWAYAM": 8.0,
-    "Google": 9.0
+    "Google": 9.0,
+    "LetsUpgrade": 7.0,
 }
 
-COURSE_DIFFICULTY = {
+COURSE_WEIGHTS = {
     "Python": 7.0,
     "Java": 7.5,
     "Ruby": 6.0,
     "SQL": 7.0,
-    "MongoDB": 7.5
+    "MongoDB": 7.5,
 }
 
 def update_user_ranks():
@@ -90,6 +102,43 @@ def update_user_ranks():
         logger.info("User ranks and weightage updated successfully")
     except Exception as e:
         logger.error(f"update_user_ranks error: {str(e)}")
+
+def clean_text(text):
+    """Remove special characters, collapse whitespace."""
+    return re.sub(r'\W+', ' ', text).strip().lower()
+
+def is_similar(needle, haystack, threshold=70):
+    """Improved similarity check: checks both lines and full text."""
+    needle_clean = clean_text(needle)
+    haystack_clean = clean_text(haystack)
+
+    # Compare with the entire OCR text
+    if fuzz.partial_ratio(needle_clean, haystack_clean) >= threshold:
+        return True
+
+    # Compare line by line
+    lines = haystack.splitlines()
+    for line in lines:
+        line_clean = clean_text(line)
+        if fuzz.partial_ratio(needle_clean, line_clean) >= threshold:
+            return True
+    return False
+
+
+def extract_text_from_pdf(pdf_path):
+    """
+    Converts each page of a PDF to an image and applies OCR to extract text.
+    """
+    doc = fitz.open(pdf_path)
+    text = ""
+
+    for page_num in range(len(doc)):
+        page = doc.load_page(page_num)
+        pix = page.get_pixmap()
+        img = Image.open(io.BytesIO(pix.tobytes()))
+        text += pytesseract.image_to_string(img)
+
+    return text
 
 # Authentication Views
 class SignupView(APIView):
@@ -291,6 +340,7 @@ class CertificateListView(APIView):
             logger.error(f"CertificateListView error: {str(e)}")
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
 class CertificateUploadView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -308,71 +358,71 @@ class CertificateUploadView(APIView):
             if Certificate.objects.filter(user=user, name=certificate_name).exists():
                 return Response({'error': 'Certificate with this name already exists'}, status=status.HTTP_400_BAD_REQUEST)
 
-            # OCR Processing
-            ocr = PaddleOCR(use_angle_cls=True, lang='en')
-            ocr_result = ocr.ocr(certificate_file.temporary_file_path(), cls=True)
-            extracted_text = ' '.join([line[1][0] for block in ocr_result for line in block])
+            file_bytes = certificate_file.read()
+            certificate_file.seek(0)
 
-            # Extract possible fields from OCR (naive match)
-            extracted_issuer = next((key for key in ISSUER_WEIGHTS.keys() if key.lower() in extracted_text.lower()), None)
-            extracted_course = next((key for key in COURSE_WEIGHTS.keys() if key.lower() in extracted_text.lower()), None)
-            extracted_name = f"{user.first_name} {user.last_name}".strip()
+            file_hash = hashlib.sha256(file_bytes).hexdigest()
 
-            # Compare user input with OCR extracted data
-            input_issuer = data.get("issuer", "")
-            input_course = data.get("course_name", "")
+            if Certificate.objects.filter(user=user, file_hash=file_hash).exists():
+                return Response({'error': 'This certificate file has already been uploaded'}, status=status.HTTP_400_BAD_REQUEST)
 
-            issuer_match = fuzz.token_sort_ratio(input_issuer.lower(), extracted_issuer.lower()) if extracted_issuer else 0
-            course_match = fuzz.token_sort_ratio(input_course.lower(), extracted_course.lower()) if extracted_course else 0
-            name_match = fuzz.token_sort_ratio(extracted_name.lower(), extracted_text.lower())
+            input_issuer = data.get("issuer", "").strip()
+            input_course = data.get("course_name", "").strip()
 
-            if issuer_match < 80 or course_match < 80 or name_match < 80:
+            if not input_issuer or not input_course:
+                return Response({'error': 'Issuer and course_name are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # 🔍 OCR + Similarity Check (NEW)
+            temp_pdf_path = 'temp_certificate.pdf'
+            with open(temp_pdf_path, 'wb+') as destination:
+                for chunk in certificate_file.chunks():
+                    destination.write(chunk)
+
+            pdf_text = extract_text_from_pdf(temp_pdf_path)
+
+            print("\n--- Extracted Text from Certificate ---\n", pdf_text)  
+            
+            full_name = f"{user.first_name} {user.last_name}".strip()
+            username_match = is_similar(full_name, pdf_text)
+            issuer_match = is_similar(input_issuer, pdf_text)
+            course_match = is_similar(input_course, pdf_text)
+
+            if not (username_match and issuer_match and course_match):
                 return Response({
-                    'error': 'Certificate details do not match OCR results',
-                    'ocr_result': {
-                        'issuer': extracted_issuer,
-                        'course': extracted_course,
-                        'name': extracted_name,
-                        'issuer_match': issuer_match,
-                        'course_match': course_match,
-                        'name_match': name_match
-                    }
+                    'error': 'Certificate content does not match the entered details. Please ensure accuracy.'
                 }, status=status.HTTP_400_BAD_REQUEST)
 
-            # Assign weightage from predefined mappings
-            issuer_weight = ISSUER_WEIGHTS.get(extracted_issuer, 5.0)
-            course_weight = COURSE_WEIGHTS.get(extracted_course.lower(), 5.0)
+            # 🧮 Weightage Logic
+            issuer_weight = ISSUER_WEIGHTS.get(input_issuer, 5.0)
+            course_weight = COURSE_WEIGHTS.get(input_course.lower(), 5.0)
             final_weightage = round((issuer_weight + course_weight) / 2, 2)
 
-            # Save Certificate
+            # 📝 Save Certificate
             certificate = Certificate.objects.create(
                 user=user,
                 name=certificate_name,
-                issuer=extracted_issuer,
+                issuer=input_issuer,
                 weightage=final_weightage,
                 status='pending',
-                certificate_file=certificate_file
+                certificate_file=certificate_file,
+                file_hash=file_hash
             )
 
-            # Save Course
             Course.objects.create(
                 user=user,
-                course_name=extracted_course,
-                issuer=extracted_issuer
+                course_name=input_course,
+                issuer=input_issuer
             )
 
-            # Update user profile total weightage
             profile = user.userprofile
-            profile.total_weightage += final_weightage
+            profile.total_weightage += Decimal(str(final_weightage))
             profile.save()
 
-            # Update domain info
             domain, _ = Domain.objects.get_or_create(user=user, name='General')
             domain.certificate_count += 1
             domain.total_weightage += final_weightage
             domain.save()
 
-            # Update user rankings
             update_user_ranks()
 
             return Response({
@@ -381,16 +431,14 @@ class CertificateUploadView(APIView):
                     'id': certificate.id,
                     'name': certificate.name,
                     'issuer': certificate.issuer,
-                    'course': extracted_course,
+                    'course': input_course,
                     'weightage': final_weightage,
                 }
             }, status=status.HTTP_201_CREATED)
 
         except Exception as e:
-            logger.error(f"CertificateUploadView error: {str(e)}")
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
+            logger.error(f"CertificateUploadView error: {str(e)}", exc_info=True)
+            return Response({'error': 'An unexpected error occurred'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class ProfileView(APIView):
     permission_classes = [IsAuthenticated]
@@ -455,3 +503,6 @@ class LeaderboardView(APIView):
         except Exception as e:
             logger.error(f"LeaderboardView error: {str(e)}")
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
