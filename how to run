@@ -5,6 +5,20 @@ pip install dotenv
 pip install paddleocr paddlepaddle fuzzywuzzy python-Levenshtein
 cd certificate_validation
 
+1. ✅ Install Tesseract-OCR Engine
+Windows:
+
+Download the installer:
+👉 https://github.com/UB-Mannheim/tesseract/wiki
+
+Install and note the install path (e.g., C:\Program Files\Tesseract-OCR)
+
+Add this path to your System Environment Variables:
+
+Go to System Properties → Advanced → Environment Variables
+
+Edit the Path variable under "System Variables"
+
 python manage.py makemigrations
 python manage.py migrate
 python manage.py createsuperuser
