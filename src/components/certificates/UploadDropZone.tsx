@@ -44,6 +44,7 @@ export function UploadDropZone() {
     "NPTEL",
     "SWAYAM",
     "Google",
+    "LetsUpgrade",
   ];
 
   const handleDrag = (e: React.DragEvent) => {

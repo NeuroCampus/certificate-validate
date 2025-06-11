@@ -62,6 +62,7 @@ class Certificate(models.Model):
     verification_date = models.DateTimeField(null=True, blank=True)
     certificate_file = models.FileField(upload_to='certificates/')
     blockchain_tx_hash = models.CharField(max_length=255, null=True, blank=True)
+    file_hash = models.CharField(max_length=64, null=True, blank=True)
 
     def __str__(self):
         return f"{self.name} ({self.user.email})"
