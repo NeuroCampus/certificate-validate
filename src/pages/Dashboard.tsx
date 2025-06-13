@@ -98,16 +98,18 @@ export default function Dashboard() {
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            {dashboardData.domain_progress.map((domain, index) => (
-              <ProgressRing
-                key={index}
-                progress={(domain.total_weightage / 100) * 100} // Adjust based on max weightage
-                size={130}
-                strokeWidth={12}
-                label={domain.name}
-                value={`${Math.round((domain.total_weightage / 100) * 100)}%`}
-              />
-            ))}
+            {dashboardData.domain_progress
+              .filter((domain) => domain.name !== 'General')
+              .map((domain, index) => (
+                <ProgressRing
+                  key={index}
+                  progress={(domain.total_weightage / 100) * 100} // Adjust based on max weightage
+                  size={130}
+                  strokeWidth={12}
+                  label={domain.name}
+                  value={`${Math.round((domain.total_weightage / 100) * 100)}%`}
+                />
+              ))}
           </div>
         </div>
       </div>

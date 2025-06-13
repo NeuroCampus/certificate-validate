@@ -314,6 +314,8 @@ class DashboardView(APIView):
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+# ... [all other imports and code remain unchanged] ...
+
 class CertificateListView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -333,13 +335,21 @@ class CertificateListView(APIView):
                 certificates = certificates.filter(status=cert_status)
 
             certificates = certificates.order_by('-upload_date').values(
-                'id', 'name', 'issuer', 'category', 'domain', 'weightage', 'status', 'upload_date'
+                'id', 'name', 'issuer', 'category', 'domain', 'weightage', 'status', 'upload_date', 'certificate_file'
             )
+            certificates = [
+                {
+                    **cert,
+                    'certificate_file': request.build_absolute_uri(f"{settings.MEDIA_URL}{cert['certificate_file']}") if cert['certificate_file'] else None
+                }
+                for cert in certificates
+            ]
             return Response({'certificates': list(certificates)}, status=status.HTTP_200_OK)
         except Exception as e:
             logger.error(f"CertificateListView error: {str(e)}")
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+# ... [all other functions remain unchanged] ...
 
 class CertificateUploadView(APIView):
     permission_classes = [IsAuthenticated]
@@ -372,7 +382,7 @@ class CertificateUploadView(APIView):
             if not input_issuer or not input_course:
                 return Response({'error': 'Issuer and course_name are required'}, status=status.HTTP_400_BAD_REQUEST)
 
-            # 🔍 OCR + Similarity Check (NEW)
+            # 🔍 OCR + Similarity Check
             temp_pdf_path = 'temp_certificate.pdf'
             with open(temp_pdf_path, 'wb+') as destination:
                 for chunk in certificate_file.chunks():
@@ -420,7 +430,7 @@ class CertificateUploadView(APIView):
 
             domain, _ = Domain.objects.get_or_create(user=user, name='General')
             domain.certificate_count += 1
-            domain.total_weightage += final_weightage
+            domain.total_weightage += Decimal(str(final_weightage))  # Fixed line
             domain.save()
 
             update_user_ranks()
@@ -503,6 +513,3 @@ class LeaderboardView(APIView):
         except Exception as e:
             logger.error(f"LeaderboardView error: {str(e)}")
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-

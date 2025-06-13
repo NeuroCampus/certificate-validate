@@ -24,6 +24,7 @@ interface Certificate {
   weightage: number;
   status: string;
   upload_date: string;
+  certificate_file?: string;
 }
 
 export function CertificateTable() {
@@ -46,12 +47,7 @@ export function CertificateTable() {
             headers: { Authorization: `Token ${token}` },
           }
         );
-        setCertificates(
-          response.data.certificates.map((cert: Certificate) => ({
-            ...cert,
-            date: cert.upload_date,
-          }))
-        );
+        setCertificates(response.data.certificates); // Use API response directly
       } catch (err: any) {
         toast({
           variant: "destructive",
@@ -83,12 +79,16 @@ export function CertificateTable() {
     return 0;
   });
 
-  const requestSort = (key: string) => {
-    let direction: "ascending" | "descending" = "ascending";
-    if (sortConfig && sortConfig.key === key && sortConfig.direction === "ascending") {
-      direction = "descending";
+  const handleViewCertificate = (certificate: Certificate) => {
+    if (certificate.certificate_file) {
+      window.open(certificate.certificate_file, "_blank");
+    } else {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Certificate file not available",
+      });
     }
-    setSortConfig({ key, direction });
   };
 
   return (
@@ -164,7 +164,12 @@ export function CertificateTable() {
                     <StatusBadge status={certificate.status} />
                   </TableCell>
                   <TableCell>
-                    <Button variant="ghost" size="icon">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleViewCertificate(certificate)}
+                      title="View Certificate"
+                    >
                       <FileText size={16} className="text-primary" />
                     </Button>
                   </TableCell>

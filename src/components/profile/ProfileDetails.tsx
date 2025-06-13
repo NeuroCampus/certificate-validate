@@ -105,9 +105,6 @@ export function ProfileDetails() {
               <h2 className="text-2xl font-bold">{userData.name}</h2>
               <div className="text-muted-foreground">{userData.email}</div>
               <div className="flex flex-wrap gap-2 mt-2">
-                <Badge variant="outline" className="bg-muted/50">
-                  {userData.department}
-                </Badge>
                 <Badge
                   variant="outline"
                   className="bg-primary/10 text-primary border-primary/20 flex items-center gap-1"
@@ -151,10 +148,6 @@ export function ProfileDetails() {
               <div className="mt-6">
                 <h4 className="text-sm font-medium mb-3">User Information</h4>
                 <div className="space-y-2">
-                  <div className="flex justify-between py-2 border-b">
-                    <span className="text-muted-foreground">Department</span>
-                    <span className="font-medium">{userData.department}</span>
-                  </div>
                   <div className="flex justify-between py-2 border-b">
                     <span className="text-muted-foreground">Joined</span>
                     <span className="font-medium">{userData.joinDate}</span>
